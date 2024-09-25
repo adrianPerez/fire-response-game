@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fire Response Game</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #b0b0b0; /* Grey background */
+        }
+
+        #gameContainer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        canvas {
+            border: 1px solid black;
+            background-color: white;
+        }
+
+        #controls, #speedControl {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1200" height="800"></canvas>
+        <div id="controls">
+            <button id="resetButton">Reset</button>
+            <button id="clearLineButton">Clear Line</button>
+        </div>
+        <div id="speedControl">
+            <label for="speedSlider">Drone Speed:</label>
+            <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="0.01">
+            <span id="speedValue">0.01</span>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let fires = [];
+        let line = [];
+        let drones = [];
+        let van = { x: 600, y: 400 }; // Updated van position to be centered in the larger canvas
+        let gameStarted = false;
+        let lineDrawn = false;
+        let droneSpeed = 0.5; // Initial speed of drones
+
+        // Load images
+        const mapImage = new Image();
+        mapImage.src = 'map.png';
+        const fireImage = new Image();
+        fireImage.src = 'fire.png';
+        const vanImage = new Image();
+        vanImage.src = 'van.png';
+        const droneImage = new Image();
+        droneImage.src = 'drone.png';
+
+        // Function to ensure all images are loaded before starting the game
+        function startGameWhenReady() {
+            if (mapImage.complete && fireImage.complete && vanImage.complete && droneImage.complete) {
+                gameStarted = true;
+                renderGame();
+                setInterval(spawnFire, 2000); // Fires pop up every 2 seconds
+            } else {
+                setTimeout(startGameWhenReady, 100); // Check again after 100ms
+            }
+        }
+
+        // Function to draw a line
+        function drawLine() {
+            canvas.onmousedown = (e) => {
+                line = [{ x: e.offsetX, y: e.offsetY }];
+                lineDrawn = true; // Mark that a line has been drawn
+                canvas.onmousemove = (moveEvent) => {
+                    line.push({ x: moveEvent.offsetX, y: moveEvent.offsetY });
+                    renderGame();
+                };
+                canvas.onmouseup = () => {
+                    canvas.onmousemove = null;
+                    // Start spawning drones after the first line is drawn
+                    if (line.length > 1) {
+                        setInterval(spawnDrone, 2000); // Drones spawn every 2 seconds after drawing
+                    }
+                };
+            };
+        }
+
+        // Function to render fires
+        function spawnFire() {
+            if (fires.length < 5) {
+                fires.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height });
+            }
+        }
+
+        // Function to spawn a drone
+        function spawnDrone() {
+            if (line.length > 0 && drones.length < 3) { // Limit to 3 drones
+                drones.push({
+                    x: van.x,
+                    y: van.y,
+                    targetIndex: 0, // Start moving towards the first point
+                    returning: false // Not returning to van initially
+                });
+            }
+        }
+
+        // Function to move drones
+        function moveDrones() {
+            drones.forEach((drone) => {
+                let target;
+                if (!drone.returning) {
+                    // Move towards the line's first point, follow line, then return
+                    target = line[drone.targetIndex] || line[line.length - 1];
+                } else {
+                    // Move back to the van
+                    target = { x: van.x, y: van.y };
+                }
+
+                // Calculate movement
+                const dx = target.x - drone.x;
+                const dy = target.y - drone.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > droneSpeed) {
+                    drone.x += (dx / distance) * droneSpeed;
+                    drone.y += (dy / distance) * droneSpeed;
+                } else {
+                    // If drone reached the current target
+                    if (!drone.returning && drone.targetIndex < line.length - 1) {
+                        drone.targetIndex++;
+                    } else if (!drone.returning) {
+                        // Start returning to van
+                        drone.returning = true;
+                    } else {
+                        // Remove drone once it reaches back to the van
+                        drones = drones.filter(d => d !== drone);
+                    }
+                }
+            });
+        }
+
+        // Game rendering function
+        function renderGame() {
+            if (!gameStarted) return; // Do not render if the game hasn't started yet
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(mapImage, 0, 0, canvas.width, canvas.height);
+            
+            // Draw fires
+            fires.forEach(fire => {
+                ctx.drawImage(fireImage, fire.x - 15, fire.y - 15, 100, 100);
+            });
+            
+            // Draw the van
+            ctx.drawImage(vanImage, van.x - 20, van.y - 10, 100, 100);
+            
+            // Draw thick yellow line
+            if (line.length > 1) {
+                ctx.strokeStyle = 'yellow';
+                ctx.lineWidth = 5;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(line[0].x, line[0].y);
+                line.forEach(point => ctx.lineTo(point.x, point.y));
+                ctx.stroke();
+            }
+
+            // Draw drones
+            drones.forEach(drone => {
+                ctx.drawImage(droneImage, drone.x - 10, drone.y - 10, 100, 100);
+            });
+
+            moveDrones();
+            requestAnimationFrame(renderGame); // Continuously render the game
+        }
+
+        // Reset and Clear Line functions
+        document.getElementById('resetButton').onclick = () => {
+            fires = [];
+            line = [];
+            drones = [];
+            lineDrawn = false;
+            renderGame();
+        };
+
+        document.getElementById('clearLineButton').onclick = () => {
+            line = [];
+            renderGame();
+        };
+
+        // Update speed value and display
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+
+        speedSlider.oninput = function() {
+            droneSpeed = parseFloat(this.value);
+            speedValue.textContent = this.value;
+        };
+
+        // Start the game when all images are loaded
+        startGameWhenReady();
+        drawLine(); // Enable line drawing once the game starts
+    </script>
+</body>
+</html>
